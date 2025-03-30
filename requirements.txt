@@ -1,0 +1,6 @@
+colorama
+telebot
+pyautogui
+opencv-python
+pynput
+psutil
